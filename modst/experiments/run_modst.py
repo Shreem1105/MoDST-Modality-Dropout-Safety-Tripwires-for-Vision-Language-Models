@@ -2,6 +2,7 @@ import argparse
 import yaml
 import json
 import os
+import time
 from tqdm import tqdm
 from modst.models.vlm_wrapper import LlavaWrapper
 from modst.datasets.base_dataset import BaseVLMDataset
@@ -28,6 +29,7 @@ def main(config):
     for i in tqdm(range(min(len(val_ds), config['max_samples']))):
         item = val_ds[i]
         
+        start_time = time.time()
         # 3-Pass Inference
         passes = model.run_modst_passes(item['prompt'], item['image'])
         
@@ -36,13 +38,15 @@ def main(config):
         
         # Action Policy
         decision = policy.act(scores['total'], passes)
+        latency = (time.time() - start_time) * 1000 # ms
         
         results.append({
             "id": item['id'],
             "label": item['label'],
             "passes": passes,
             "scores": scores,
-            "decision": decision
+            "decision": decision,
+            "latency_ms": latency
         })
 
     # Save results
