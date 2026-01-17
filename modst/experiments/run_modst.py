@@ -32,7 +32,8 @@ def main(config):
     results = []
     print(f"Running MoDST Experiment: {config['experiment_name']}")
     
-    for i in tqdm(range(min(len(val_ds), config['max_samples']))):
+    max_limit = config['max_samples'] if config['max_samples'] > 0 else len(val_ds)
+    for i in tqdm(range(min(len(val_ds), max_limit))):
         item = val_ds[i]
         
         start_time = time.time()
