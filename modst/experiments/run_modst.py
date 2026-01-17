@@ -4,7 +4,7 @@ import json
 import os
 import time
 from tqdm import tqdm
-from modst.models.vlm_wrapper import LlavaWrapper
+from modst.models.vlm_wrapper import LlavaWrapper, InstructBlipWrapper
 from modst.datasets.base_dataset import BaseVLMDataset
 from modst.datasets.perturbations import ShiftedDataset
 from modst.tripwire.score import MoDSTScore
@@ -12,7 +12,13 @@ from modst.baselines.vanilla import MoDSTPolicy
 
 def main(config):
     # Initialize components
-    model = LlavaWrapper(load_in_4bit=config['quantization'])
+    grounding_prompt = config.get('grounding_prompt', None)
+    
+    if "instructblip" in config['model_id'].lower():
+        model = InstructBlipWrapper(model_id=config['model_id'], load_in_4bit=config['quantization'], grounding_prompt=grounding_prompt)
+    else:
+        model = LlavaWrapper(load_in_4bit=config['quantization'], grounding_prompt=grounding_prompt)
+
     score_engine = MoDSTScore(**config['tripwire_weights'])
     policy = MoDSTPolicy(threshold=config['threshold'])
     
