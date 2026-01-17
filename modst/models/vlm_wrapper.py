@@ -1,7 +1,7 @@
 import torch
 from abc import ABC, abstractmethod
 from PIL import Image
-from transformers import AutoProcessor, LlavaForConditionalGeneration
+from transformers import AutoProcessor, LlavaForConditionalGeneration, BitsAndBytesConfig
 from typing import Optional, Dict, Any
 
 class AbstractVLM(ABC):
@@ -20,12 +20,20 @@ class LlavaWrapper(AbstractVLM):
     """LLaVA-1.5 implementation with support for 4-bit quantization."""
     def __init__(self, model_id: str = "llava-hf/llava-1.5-7b-hf", load_in_4bit: bool = True, grounding_prompt: str = None):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        quantization_config = None
+        if load_in_4bit:
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16
+            )
+
         self.model = LlavaForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=torch.float16,
             low_cpu_mem_usage=True,
             device_map="auto",
-            load_in_4bit=load_in_4bit
+            quantization_config=quantization_config
         )
         self.processor = AutoProcessor.from_pretrained(model_id)
         self.null_img = Image.new('RGB', (224, 224), color=(0, 0, 0))
@@ -33,11 +41,24 @@ class LlavaWrapper(AbstractVLM):
         self.grounding_prompt = grounding_prompt if grounding_prompt else "USER: <image>\nList all visible objects, their attributes, and spatial relationships. ASSISTANT:"
 
     def generate(self, prompt: str, image: Optional[Image.Image] = None) -> Dict[str, Any]:
+        # Ensure proper LLaVA template formatting
+        # LLaVA requires '<image>' token in the text if images are passed
+        if image is not None:
+            if "<image>" not in prompt:
+                # If prompt doesn't follow the template, wrap it
+                prompt = f"USER: <image>\n{prompt}\nASSISTANT:"
+        
         inputs = self.processor(text=prompt, images=image, return_tensors="pt").to(self.device, torch.float16)
         with torch.no_grad():
             output = self.model.generate(**inputs, max_new_tokens=128, do_sample=False, return_dict_in_generate=True, output_scores=True)
         
-        decoded = self.processor.decode(output.sequences[0], skip_special_tokens=True).split("ASSISTANT:")[-1].strip()
+        decoded = self.processor.decode(output.sequences[0], skip_special_tokens=True)
+        # Handle cases where "ASSISTANT:" might be part of the prompt or output
+        if "ASSISTANT:" in decoded:
+            decoded = decoded.split("ASSISTANT:")[-1].strip()
+        else:
+            decoded = decoded.strip()
+            
         # Mock confidence as max logit average for the baseline
         confidence = torch.stack(output.scores).max(dim=-1).values.mean().item() if output.scores else 0.0
         
