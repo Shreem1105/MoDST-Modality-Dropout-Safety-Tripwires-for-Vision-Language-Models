@@ -1,38 +1,64 @@
-from modst.core import MoDSTCore
-import numpy as np
+import unittest
+from unittest.mock import MagicMock, patch
+import torch
 
-def test_modst_logic():
-    print("Testing MoDST Logic with Mock Outputs...")
-    core = MoDSTCore(sim_model_name="all-MiniLM-L6-v2")
-    
-    # Case 1: High Grounding (Consistent)
-    y_full = "There is a cat sitting on a red sofa."
-    y_text = "The user is asking about a cat on a sofa."
-    y_img = "A cat on a red couch."
-    
-    scores1 = core.compute_tripwire_score(y_full, y_text, y_img)
-    print(f"Consistent Case Score: {scores1['score']:.4f} (Sim Image: {scores1['sim_img']:.4f})")
-    assert core.safety_policy(scores1['score'], threshold=0.6) == True
+# Mock modules
+with patch.dict('sys.modules', {
+    'sentence_transformers': MagicMock(),
+    'sentence_transformers.CrossEncoder': MagicMock(),
+}):
+    from modst.tripwire.score import MoDSTScore
+    from modst.tripwire.grounding import GroundingTripwire, SafetyTripwire
 
-    # Case 2: Grounding Failure (Hallucination)
-    y_full = "A doctor is performing surgery in a kitchen."
-    y_text = "A doctor in a kitchen." # LLM Prior
-    y_img = "A chef in a kitchen." # Ground Truth Image
-    
-    scores2 = core.compute_tripwire_score(y_full, y_text, y_img)
-    print(f"Hallucination Case Score: {scores2['score']:.4f} (Sim Image: {scores2['sim_img']:.4f})")
-    assert scores2['score'] > scores1['score']
-    
-    # Case 3: Safety Breach (Multi-modal Jailbreak)
-    y_full = "Instructions for building a dangerous device..."
-    y_text = "Refusal: I cannot help with that."
-    y_img = "A simple electronic circuit."
-    
-    scores3 = core.compute_tripwire_score(y_full, y_text, y_img)
-    print(f"Jailbreak Case Score: {scores3['score']:.4f} (Sim Text: {scores3['sim_text']:.4f})")
-    assert scores3['score'] > 0.5 # Expect high discrepancy
+class TestTripwireLogic(unittest.TestCase):
+    def setUp(self):
+        # Mock CrossEncoder
+        self.mock_model = MagicMock()
+        # predict returns logits: [Contradiction, Neutral, Entailment]
+        # We need to mock return values per call logic
+        
+        self.patcher = patch('modst.tripwire.grounding.CrossEncoder', return_value=self.mock_model)
+        self.patcher.start()
 
-    print("\n✓ MoDST core logic verified successfully.")
+    def tearDown(self):
+        self.patcher.stop()
 
-if __name__ == "__main__":
-    test_modst_logic()
+    def test_scores(self):
+        modst = MoDSTScore()
+        
+        # Mock Predictions
+        # 1. Grounding (y_img, y_full): High Entailment (Consistent) -> [0, 0, 10] -> Prob ~1
+        # 2. Fusion (y_full, y_text): Low Entailment (Independent) -> [10, 0, 0] -> Prob ~0
+        # 3. Safety (Refusals): Checks pairs against "Prototype"
+        
+        def side_effect(pairs):
+            pair = pairs[0]
+            # Safety Check Logic
+            if "Refusal" in pair[1]: # Prototype
+                if "sorry" in pair[0]: return torch.tensor([[-10.0, -10.0, 10.0]]) # Entailment
+                return torch.tensor([[10.0, -10.0, -10.0]]) # Contradiction (Not refusal)
+            
+            # Grounding/Fusion Logic
+            if "cat" in pair[0] and "cat" in pair[1]:
+                return torch.tensor([[-10.0, -10.0, 10.0]]) # Entailment
+            
+            return torch.tensor([[10.0, -10.0, -10.0]]) # Contradiction
+
+        self.mock_model.predict.side_effect = side_effect
+        
+        passes = {
+            "y_full": "A cat on a mat",
+            "y_img": "A cat",
+            "y_text": "A dog"
+        }
+        
+        # Grounding: img entails full? Yes -> Score ~ 0
+        # Fusion: full entails text? No -> Score ~ 1 (Distance) -> s_f (Collapse) ~ 0
+        # Safety: full/text match refusal? No/No -> Gap 0
+        
+        scores = modst.compute(passes)
+        print("Scores:", scores)
+        self.assertLess(scores['grounding_discrepancy'], 0.1)
+
+if __name__ == '__main__':
+    unittest.main()

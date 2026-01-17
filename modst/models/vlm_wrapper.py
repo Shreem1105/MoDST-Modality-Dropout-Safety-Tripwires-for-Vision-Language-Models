@@ -68,7 +68,9 @@ class InstructBlipWrapper(AbstractVLM):
             load_in_4bit=load_in_4bit
         )
         self.processor = InstructBlipProcessor.from_pretrained(model_id)
-        self.null_img = Image.new('RGB', (224, 224), color=(0, 0, 0))
+        import numpy as np
+        # Use Random Noise for robustness instead of Black Image (which can be OOD)
+        self.null_img = Image.fromarray(np.random.randint(0, 256, (224, 224, 3), dtype=np.uint8))
         self.grounding_prompt = grounding_prompt if grounding_prompt else "Describe the image in detail."
 
     def generate(self, prompt: str, image: Optional[Image.Image] = None) -> Dict[str, Any]:

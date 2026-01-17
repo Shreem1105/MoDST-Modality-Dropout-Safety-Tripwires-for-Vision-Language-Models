@@ -9,9 +9,16 @@ class MoDSTScore:
     while DISAGREEING with visual evidence (y_img).
     """
     def __init__(self, alpha=0.5, beta=0.3, gamma=0.2):
-        self.grounding = GroundingTripwire()
-        self.fusion = FusionTripwire()
-        self.safety = SafetyTripwire()
+        # Optimization: Shared NLI model for all tripwires (Consistency + Memory Efficiency)
+        # We pass the model name string to the first one, then the object to others? 
+        # Or better: Instantiate here? No, let's let Grounding instantiate and reuse its model.
+        
+        self.grounding = GroundingTripwire() # Instantiates model
+        shared_model = self.grounding.model # Access the CrossEncoder
+        
+        self.fusion = FusionTripwire(model_input=shared_model)
+        self.safety = SafetyTripwire(model_input=shared_model)
+        
         self.weights = {"g": alpha, "f": beta, "s": gamma}
 
     def compute(self, passes: dict) -> dict:
