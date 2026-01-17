@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv/
+
+# PyTorch
+*.pth
+*.pt
+
+# Outputs and Data
+outputs/
+data/
+tests/temp_outputs/
+tests/temp_data/
+
+# Editor
+.vscode/
+.idea/

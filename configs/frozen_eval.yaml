@@ -1,0 +1,25 @@
+# Frozen Config for ICLR 2026 MoDST Experiment
+experiment_name: "modst_frozen_eval_v1"
+model_id: "llava-hf/llava-1.5-7b-hf"
+max_samples: 1000
+quantization: true
+output_path: "outputs/frozen_results.json"
+
+# Tuned Tripwire Weights
+tripwire_weights:
+  alpha: 0.50  # Contrastive Divergence (Core MoDST innovation)
+  beta: 0.30   # Standalone Grounding discrepancy
+  gamma: 0.20  # Safety refused gap
+
+# Decision Policy
+threshold: 0.45 # Tuned for 90% coverage on calibration set
+
+# Datasets
+datasets:
+  standard:
+    name: "SugarCrepe"
+    shift: null
+  shifted:
+    name: "Shifted-SugarCrepe"
+    shift: "noise"
+    severity: 0.1

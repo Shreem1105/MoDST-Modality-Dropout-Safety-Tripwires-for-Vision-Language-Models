@@ -1,0 +1,21 @@
+# Config for MoDST Experiment Pipeline
+experiment_name: "modst_h200_baseline"
+json_path: "data/val_grounding.json"
+img_dir: "data/images"
+output_path: "outputs/results.json"
+
+# VLM Settings
+model_id: "llava-hf/llava-1.5-7b-hf"
+quantization: true
+max_samples: 1000
+
+# MoDST Parameters
+threshold: 0.5
+tripwire_weights:
+  alpha: 0.4  # Grounding
+  beta: 0.4   # Fusion
+  gamma: 0.2  # Safety
+
+# Distribution Shift
+shift_type: "noise" # options: noise, occlusion, blur, null
+severity: 0.1
