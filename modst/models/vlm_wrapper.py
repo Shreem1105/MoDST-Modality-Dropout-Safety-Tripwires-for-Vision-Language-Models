@@ -2,7 +2,7 @@ import torch
 from abc import ABC, abstractmethod
 from PIL import Image
 from transformers import AutoProcessor, LlavaForConditionalGeneration, BitsAndBytesConfig
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union, List
 
 class AbstractVLM(ABC):
     """Abstract base class for VLMs in the MoDST experiment."""
@@ -40,29 +40,69 @@ class LlavaWrapper(AbstractVLM):
         # Default prompt if none provided
         self.grounding_prompt = grounding_prompt if grounding_prompt else "USER: <image>\nList all visible objects, their attributes, and spatial relationships. ASSISTANT:"
 
-    def generate(self, prompt: str, image: Optional[Image.Image] = None) -> Dict[str, Any]:
-        # Ensure proper LLaVA template formatting
-        # LLaVA requires '<image>' token in the text if images are passed
-        if image is not None:
-            if "<image>" not in prompt:
-                # If prompt doesn't follow the template, wrap it
-                prompt = f"USER: <image>\n{prompt}\nASSISTANT:"
-        
-        inputs = self.processor(text=prompt, images=image, return_tensors="pt").to(self.device, torch.float16)
-        with torch.no_grad():
-            output = self.model.generate(**inputs, max_new_tokens=128, do_sample=False, return_dict_in_generate=True, output_scores=True)
-        
-        decoded = self.processor.decode(output.sequences[0], skip_special_tokens=True)
-        # Handle cases where "ASSISTANT:" might be part of the prompt or output
-        if "ASSISTANT:" in decoded:
-            decoded = decoded.split("ASSISTANT:")[-1].strip()
+    def generate(self, prompt: Union[str, List[str]], image: Optional[Union[Image.Image, List[Image.Image]]] = None, max_new_tokens: int = 128) -> Dict[str, Any]:
+        # Handle batching
+        if isinstance(prompt, list):
+            prompts = prompt
+            images = image if image else [None] * len(prompts)
         else:
-            decoded = decoded.strip()
-            
-        # Mock confidence as max logit average for the baseline
-        confidence = torch.stack(output.scores).max(dim=-1).values.mean().item() if output.scores else 0.0
+            prompts = [prompt]
+            images = [image] if image else [None]
+
+        # Ensure proper LLaVA template formatting
+        formatted_prompts = []
+        for p, img in zip(prompts, images):
+            if img is not None:
+                if "<image>" not in p:
+                    p = f"USER: <image>\n{p}\nASSISTANT:"
+            formatted_prompts.append(p)
         
-        return {"text": decoded, "confidence": confidence}
+        # Process inputs
+        # Filter None images for processor if minimal processor doesn't handle mixed lists well
+        # But standard processor expects images list matches text list length or similar. 
+        # Actually standard HF processor: text=List[str], images=List[Image] or None
+        
+        # If all images are None (Text-only pass), pass images=None
+        if all(img is None for img in images):
+            proc_images = None
+        else:
+            # Replace None with black image for batch consistency if mixed (rare in our pipeline)
+            # MoDST passes are usually all-text or all-image.
+             proc_images = [img if img else self.null_img for img in images]
+
+        inputs = self.processor(text=formatted_prompts, images=proc_images, return_tensors="pt", padding=True).to(self.device, torch.float16)
+        
+        with torch.no_grad():
+            output = self.model.generate(
+                **inputs, 
+                max_new_tokens=max_new_tokens, 
+                do_sample=False, 
+                return_dict_in_generate=True, 
+                output_scores=True
+            )
+        
+        decoded_list = self.processor.batch_decode(output.sequences, skip_special_tokens=True)
+        results = []
+        
+        # Calculate per-sample confidence (max logit mean) - strictly illustrative
+        if output.scores:
+            # Stack scores: (seq_len, batch, vocab)
+            # Max over vocab: (seq_len, batch)
+            # Mean over seq_len -> (batch)
+            confidences = torch.stack(output.scores).max(dim=-1).values.mean(dim=0).tolist()
+        else:
+            confidences = [0.0] * len(decoded_list)
+
+        for text, conf in zip(decoded_list, confidences):
+            if "ASSISTANT:" in text:
+                text = text.split("ASSISTANT:")[-1].strip()
+            else:
+                text = text.strip()
+            results.append({"text": text, "confidence": conf})
+            
+        if isinstance(prompt, str):
+            return results[0]
+        return results
 
     def run_modst_passes(self, prompt: str, image: Image.Image) -> Dict[str, str]:
         # Implementation of the three passes

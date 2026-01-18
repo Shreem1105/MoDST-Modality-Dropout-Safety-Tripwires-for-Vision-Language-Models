@@ -10,3 +10,4 @@ matplotlib
 tqdm
 bitsandbytes
 accelerate
+pandas
