@@ -7,8 +7,9 @@ import io
 def download_and_setup_pope():
     # Candidates for the repository zip URL (branch naming)
     urls = [
-        "https://github.com/lm-sys/POPE/archive/refs/heads/main.zip",
-        "https://github.com/lm-sys/POPE/archive/refs/heads/master.zip"
+        "https://github.com/RUCAIBox/POPE/archive/refs/heads/master.zip",
+        "https://github.com/RUCAIBox/POPE/archive/refs/heads/main.zip",
+        "https://github.com/lm-sys/POPE/archive/refs/heads/main.zip" 
     ]
     
     target_dir = "data/POPE"
