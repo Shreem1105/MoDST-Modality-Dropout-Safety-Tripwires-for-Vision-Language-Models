@@ -71,14 +71,18 @@ def run_inference(args):
             res.update({
                 "y_full": y_full_list[idx]["text"],
                 "y_text": y_text_list[idx]["text"],
-                "y_img": y_img_list[idx]["text"],
-                "meta": {
-                    "model": args.model_id,
-                    "max_new_tokens": args.max_new_tokens,
-                    "dtype": "4bit"
-                }
+                "y_img": y_img_list[idx]["text"]
             })
-            del res['meta']['meta'] # clean up circular meta
+            
+            if "meta" not in res:
+                res["meta"] = {}
+                
+            res["meta"].update({
+                "model": args.model_id,
+                "max_new_tokens": args.max_new_tokens,
+                "dtype": "4bit"
+            })
+            # del res['meta']['meta'] # Removed to fix KeyError
             results.append(res)
         return results
 
