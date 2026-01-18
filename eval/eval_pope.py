@@ -109,10 +109,10 @@ def evaluate_pope(args):
     examples = []
     
     for label_type, failure_val, sort_asc, name in [
-        (1, False, 'TP (Correctly Flagged Hallucination)'),
-        (1, True,  'FN (Missed Hallucination)'),
-        (0, True, 'TN (Correctly Trusted)'),
-        (0, False, 'FP (False Alarm)')
+        (1, 1, False, 'TP (Correctly Flagged Hallucination)'),
+        (1, 1, True,  'FN (Missed Hallucination)'),
+        (0, 0, True, 'TN (Correctly Trusted)'),
+        (0, 0, False, 'FP (False Alarm)')
     ]:
         subset = df[df['failure'] == failure_val].sort_values('s_total', ascending=sort_asc)
         for _, row in subset.head(2).iterrows():
