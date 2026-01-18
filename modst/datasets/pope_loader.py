@@ -22,8 +22,18 @@ class PopeLoader:
         normalized_data = []
         
         for fpath in files:
+            content = []
             with open(fpath, 'r') as f:
-                content = json.load(f)
+                try:
+                    # Try loading as standard JSON (list of dicts)
+                    content = json.load(f)
+                except json.JSONDecodeError:
+                    # Fallback: Try loading as JSONL (line-separated dicts)
+                    f.seek(0)
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            content.append(json.loads(line))
                 
             # POPE often comes as a list of items
             # Expected formats:
